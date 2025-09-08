@@ -449,39 +449,6 @@ def main():
         if st.button("🔌 Connect", type="primary"):
     # Rest of your connection logic...
     # Sidebar configuration
-    with st.sidebar:
-        st.header("⚙️ Configuration")
-
-        # Database and image path inputs
-        db_path = st.text_input(
-            "Database Path",
-            value="/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/matches.db",
-            help="Path to the SQLite database with match results"
-        )
-
-        image_base_path = st.text_input(
-            "Image Base Path",
-            value="/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_patches",
-            help="Base directory containing fragment images"
-        )
-
-        complete_image_path = st.text_input(
-            "Complete Image Path",
-            value="/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_bbox",
-            help="Base directory containing complete images (without fragment suffixes)"
-        )
-
-        if st.button("🔌 Connect", type="primary"):
-            conn = get_database_connection(db_path)
-            st.session_state.viewer = FragmentMatchViewer(db_path, image_base_path)
-            st.session_state.viewer.conn = conn
-            st.session_state.complete_image_path = complete_image_path
-            st.session_state.connected = True
-            if conn:
-                st.success("✅ Connected successfully!")
-                st.session_state.connected = True
-            else:
-                st.session_state.connected = False
 
     # Check if viewer is initialized
     if 'viewer' not in st.session_state or not st.session_state.get('connected', False):
