@@ -50,11 +50,11 @@ def get_default_paths():
         # Cloud deployment paths - use pruned database
         return {
             'db_path': os.path.join(script_dir, 'data', 'matches_pruned.db'),
-            'image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
-            'complete_image_path': os.path.join(script_dir, 'data', 'output_bbox'),
+            'image_base_path': os.path.join(script_dir, 'data', 'patches'),
+            'complete_image_path': os.path.join(script_dir, 'data', 'bbox' , 'output_bbox'),
             'pruned_db_path': os.path.join(script_dir, 'data', 'matches_pruned.db'),
-            'pruned_image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
-            'pruned_complete_image_path': os.path.join(script_dir, 'data', 'output_bbox')
+            'pruned_image_base_path': os.path.join(script_dir, 'data', 'patches'),
+            'pruned_complete_image_path': os.path.join(script_dir, 'data','bbox' , 'output_bbox')
         }
 
 # Page configuration
