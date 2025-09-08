@@ -24,6 +24,39 @@ from typing import List, Tuple, Dict, Optional
 import base64
 from io import BytesIO
 
+def get_environment():
+    """Detect if running locally or on Streamlit Cloud"""
+    # Check if running on Streamlit Cloud
+    if 'STREAMLIT_SHARING_MODE' in os.environ or '/home/appuser' in os.path.expanduser('~'):
+        return 'cloud'
+    return 'local'
+def get_default_paths():
+    """Get paths from environment variables or secrets"""
+    env = get_environment()
+
+    if env == 'local':
+        # Local development paths
+        return {
+            'db_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/matches.db',
+            'image_base_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_patches',
+            'complete_image_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_bbox'
+        }
+    else:
+        # Try to get from Streamlit secrets first, then fall back to relative paths
+        try:
+            return {
+                'db_path': st.secrets.get("db_path", "data/matches.db"),
+                'image_base_path': st.secrets.get("image_base_path", "data/output_patches"),
+                'complete_image_path': st.secrets.get("complete_image_path", "data/output_bbox")
+            }
+        except:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            return {
+                'db_path': os.path.join(script_dir, 'data', 'matches.db'),
+                'image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
+                'complete_image_path': os.path.join(script_dir, 'data', 'output_bbox')
+            }
+
 # Page configuration
 st.set_page_config(
     page_title="Fragment Match Explorer",
@@ -370,10 +403,51 @@ class FragmentMatchViewer:
 def main():
     """Main application function."""
 
+    default_paths = get_default_paths()
+    env = get_environment()
+
     # Title and description
     st.title("🔬 Fragment Match Explorer")
     st.markdown("### Advanced visualization and analysis of fragment matches")
 
+    # Show environment indicator
+    if env == 'cloud':
+        st.info("☁️ Running on Streamlit Cloud")
+    else:
+        st.success("💻 Running locally")
+    # Sidebar configuration
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+
+        # Database and image path inputs with environment-specific defaults
+        db_path = st.text_input(
+            "Database Path",
+            value=default_paths['db_path'],
+            help="Path to the SQLite database with match results"
+        )
+
+        image_base_path = st.text_input(
+            "Image Base Path",
+            value=default_paths['image_base_path'],
+            help="Base directory containing fragment images"
+        )
+
+        complete_image_path = st.text_input(
+            "Complete Image Path",
+            value=default_paths['complete_image_path'],
+            help="Base directory containing complete images"
+        )
+
+        # Check if files exist (helpful for debugging)
+        if env == 'cloud':
+            if not os.path.exists(db_path):
+                st.warning(f"⚠️ Database not found at: {db_path}")
+                st.info("Make sure to include the data folder in your GitHub repository")
+            else:
+                st.success(f"✅ Database found")
+
+        if st.button("🔌 Connect", type="primary"):
+    # Rest of your connection logic...
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
