@@ -30,32 +30,32 @@ def get_environment():
     if 'STREAMLIT_SHARING_MODE' in os.environ or '/home/appuser' in os.path.expanduser('~'):
         return 'cloud'
     return 'local'
+
 def get_default_paths():
-    """Get paths from environment variables or secrets"""
+    """Get appropriate default paths based on environment"""
     env = get_environment()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
     if env == 'local':
-        # Local development paths
+        # Local development paths - use full database
         return {
             'db_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/matches.db',
             'image_base_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_patches',
-            'complete_image_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_bbox'
+            'complete_image_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_bbox',
+            'pruned_db_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/matches_pruned.db',
+            'pruned_image_base_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_patches_pruned',
+            'pruned_complete_image_path': '/Users/assafspanier/Dropbox/YamHamelach_data_n_model/OUTPUT_faster_rcnn/output_bbox_pruned'
         }
     else:
-        # Try to get from Streamlit secrets first, then fall back to relative paths
-        try:
-            return {
-                'db_path': st.secrets.get("db_path", "fragment-explorer/data/matches.db"),
-                'image_base_path': st.secrets.get("image_base_path", "fragment-explorer/data/output_patches"),
-                'complete_image_path': st.secrets.get("complete_image_path", "fragment-explorer/data/output_bbox")
-            }
-        except:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            return {
-                'db_path': os.path.join(script_dir, 'data', 'matches.db'),
-                'image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
-                'complete_image_path': os.path.join(script_dir, 'data', 'output_bbox')
-            }
+        # Cloud deployment paths - use pruned database
+        return {
+            'db_path': os.path.join(script_dir, 'data', 'matches_pruned.db'),
+            'image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
+            'complete_image_path': os.path.join(script_dir, 'data', 'output_bbox'),
+            'pruned_db_path': os.path.join(script_dir, 'data', 'matches_pruned.db'),
+            'pruned_image_base_path': os.path.join(script_dir, 'data', 'output_patches'),
+            'pruned_complete_image_path': os.path.join(script_dir, 'data', 'output_bbox')
+        }
 
 # Page configuration
 st.set_page_config(
@@ -133,24 +133,51 @@ class FragmentMatchViewer:
             st.error(f"Failed to connect to database: {e}")
             return False
 
+    def check_database_schema(self):
+        """Debug function to check database structure"""
+        try:
+            # Get all tables
+            cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            st.write("Tables in database:", tables)
+
+            # Check matches table structure
+            cursor = self.conn.execute("PRAGMA table_info(matches);")
+            columns = cursor.fetchall()
+            st.write("Matches table columns:", columns)
+
+            # Check if homography_errors table exists
+            cursor = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='homography_errors';")
+            homo_table = cursor.fetchall()
+
+            if homo_table:
+                cursor = self.conn.execute("PRAGMA table_info(homography_errors);")
+                homo_columns = cursor.fetchall()
+                st.write("Homography_errors table columns:", homo_columns)
+            else:
+                st.warning("homography_errors table doesn't exist!")
+
+        except Exception as e:
+            st.error(f"Schema check error: {e}")
+
     def get_statistics(self) -> Dict:
         """Get overall statistics from the database."""
         if not self.conn:
             return {}
 
         try:
-            # Get match statistics with homography focus
+            # Use simpler conditional aggregation that works with SQLite
             query = """
             SELECT 
-                COUNT(*) as total_matches,
-                COUNT(CASE WHEN h.is_valid = 1 THEN 1 END) as valid_homography,
-                COUNT(CASE WHEN h.mean_homo_err < 5 THEN 1 END) as excellent_matches,
-                COUNT(CASE WHEN h.mean_homo_err BETWEEN 5 AND 10 THEN 1 END) as good_matches,
-                COUNT(CASE WHEN h.mean_homo_err > 10 THEN 1 END) as poor_matches,
+                COUNT(m.id) as total_matches,
+                SUM(CASE WHEN h.is_valid = 1 THEN 1 ELSE 0 END) as valid_homography,
+                SUM(CASE WHEN h.mean_homo_err < 5 THEN 1 ELSE 0 END) as excellent_matches,
+                SUM(CASE WHEN h.mean_homo_err >= 5 AND h.mean_homo_err <= 10 THEN 1 ELSE 0 END) as good_matches,
+                SUM(CASE WHEN h.mean_homo_err > 10 THEN 1 ELSE 0 END) as poor_matches,
                 AVG(m.match_count) as avg_match_count,
-                AVG(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err END) as avg_homo_error,
-                MIN(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err END) as min_homo_error,
-                MAX(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err END) as max_homo_error
+                AVG(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err ELSE NULL END) as avg_homo_error,
+                MIN(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err ELSE NULL END) as min_homo_error,
+                MAX(CASE WHEN h.is_valid = 1 THEN h.mean_homo_err ELSE NULL END) as max_homo_error
             FROM matches m
             LEFT JOIN homography_errors h ON m.id = h.match_id
             """
@@ -170,6 +197,7 @@ class FragmentMatchViewer:
             return pd.DataFrame()
 
         try:
+            # Build query with proper syntax
             query = """
             SELECT 
                 m.id,
@@ -197,15 +225,15 @@ class FragmentMatchViewer:
             if valid_homo_only:
                 query += " AND h.is_valid = 1"
 
-            # Add homography error range filter
+            # Add homography error range filter with proper NULL handling
             query += " AND (h.mean_homo_err IS NULL OR (h.mean_homo_err >= ? AND h.mean_homo_err <= ?))"
             params.extend([min_error, max_error])
 
-            # Add sorting based on selection
+            # Add sorting
             if sort_by == 'homo_error_asc':
                 query += " ORDER BY CASE WHEN h.mean_homo_err IS NULL THEN 999999 ELSE h.mean_homo_err END ASC"
             elif sort_by == 'homo_error_desc':
-                query += " ORDER BY h.mean_homo_err DESC NULLS LAST"
+                query += " ORDER BY h.mean_homo_err DESC"
             elif sort_by == 'match_count_desc':
                 query += " ORDER BY m.match_count DESC"
             elif sort_by == 'match_count_asc':
@@ -213,7 +241,7 @@ class FragmentMatchViewer:
             elif sort_by == 'std_error_asc':
                 query += " ORDER BY CASE WHEN h.std_homo_err IS NULL THEN 999999 ELSE h.std_homo_err END ASC"
             elif sort_by == 'validated_first':
-                query += " ORDER BY m.is_validated DESC, h.mean_homo_err ASC"
+                query += " ORDER BY m.is_validated DESC, CASE WHEN h.mean_homo_err IS NULL THEN 999999 ELSE h.mean_homo_err END ASC"
 
             query += " LIMIT ?"
             params.append(limit)
@@ -238,6 +266,8 @@ class FragmentMatchViewer:
             return df
         except Exception as e:
             st.error(f"Error fetching matches: {e}")
+            st.error(f"Query: {query if 'query' in locals() else 'Not built'}")
+            st.error(f"Params: {params if 'params' in locals() else 'Not set'}")
             return pd.DataFrame()
 
     def get_match_details(self, match_id: int) -> Optional[bytes]:
@@ -412,29 +442,54 @@ def main():
 
     # Show environment indicator
     if env == 'cloud':
-        st.info("☁️ Running on Streamlit Cloud")
+        st.info("☁️ Running on Streamlit Cloud (using pruned database)")
     else:
         st.success("💻 Running locally")
+
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
 
+        # For local environment, allow choosing between full and pruned database
+        if env == 'local':
+            use_pruned = st.checkbox(
+                "Use pruned database",
+                value=False,
+                help="Toggle between full database and pruned version"
+            )
+
+            if use_pruned:
+                default_db = default_paths['pruned_db_path']
+                default_img = default_paths['pruned_image_base_path']
+                default_complete = default_paths['pruned_complete_image_path']
+                st.info("📦 Using pruned database (smaller, faster)")
+            else:
+                default_db = default_paths['db_path']
+                default_img = default_paths['image_base_path']
+                default_complete = default_paths['complete_image_path']
+                st.info("📚 Using full database (complete data)")
+        else:
+            # Cloud always uses pruned
+            default_db = default_paths['db_path']
+            default_img = default_paths['image_base_path']
+            default_complete = default_paths['complete_image_path']
+
         # Database and image path inputs with environment-specific defaults
         db_path = st.text_input(
             "Database Path",
-            value=default_paths['db_path'],
+            value=default_db,
             help="Path to the SQLite database with match results"
         )
 
         image_base_path = st.text_input(
             "Image Base Path",
-            value=default_paths['image_base_path'],
+            value=default_img,
             help="Base directory containing fragment images"
         )
 
         complete_image_path = st.text_input(
             "Complete Image Path",
-            value=default_paths['complete_image_path'],
+            value=default_complete,
             help="Base directory containing complete images"
         )
 
@@ -445,7 +500,14 @@ def main():
                 st.info("Make sure to include the data folder in your GitHub repository")
             else:
                 st.success(f"✅ Database found")
-
+        else:
+            # For local, always check
+            if os.path.exists(db_path):
+                # Get file size
+                size_mb = os.path.getsize(db_path) / (1024 * 1024)
+                st.success(f"✅ Database found ({size_mb:.1f} MB)")
+            else:
+                st.warning(f"⚠️ Database not found at: {db_path}")
 
         if st.button("🔌 Connect", type="primary"):
             conn = get_database_connection(db_path)
@@ -458,6 +520,11 @@ def main():
                 st.session_state.connected = True
             else:
                 st.session_state.connected = False
+
+        # Add debug button if connected
+        if st.session_state.get('connected', False):
+            if st.button("🔍 Debug Database Schema", type="secondary"):
+                st.session_state.viewer.check_database_schema()
 
     # Check if viewer is initialized
     if 'viewer' not in st.session_state or not st.session_state.get('connected', False):
@@ -481,31 +548,46 @@ def main():
 
         with col2:
             excellent = int(stats.get('excellent_matches', 0))
-            st.metric(
-                "Excellent (<5px)",
-                f"{excellent:,}",
-                delta=f"{excellent / stats.get('total_matches', 1) * 100:.1f}%"
-            )
+            total = int(stats.get('total_matches', 1))
+            if total > 0:
+                st.metric(
+                    "Excellent (<5px)",
+                    f"{excellent:,}",
+                    delta=f"{excellent / total * 100:.1f}%"
+                )
+            else:
+                st.metric("Excellent (<5px)", "0")
 
         with col3:
             good = int(stats.get('good_matches', 0))
-            st.metric(
-                "Good (5-10px)",
-                f"{good:,}",
-                delta=f"{good / stats.get('total_matches', 1) * 100:.1f}%"
-            )
+            if total > 0:
+                st.metric(
+                    "Good (5-10px)",
+                    f"{good:,}",
+                    delta=f"{good / total * 100:.1f}%"
+                )
+            else:
+                st.metric("Good (5-10px)", "0")
 
         with col4:
-            st.metric(
-                "Avg Error",
-                f"{stats.get('avg_homo_error', 0):.2f} px"
-            )
+            avg_error = stats.get('avg_homo_error', 0)
+            if avg_error and avg_error > 0:
+                st.metric(
+                    "Avg Error",
+                    f"{avg_error:.2f} px"
+                )
+            else:
+                st.metric("Avg Error", "N/A")
 
         with col5:
-            st.metric(
-                "Min Error",
-                f"{stats.get('min_homo_error', 0):.2f} px"
-            )
+            min_error = stats.get('min_homo_error', 0)
+            if min_error and min_error > 0:
+                st.metric(
+                    "Min Error",
+                    f"{min_error:.2f} px"
+                )
+            else:
+                st.metric("Min Error", "N/A")
 
     st.divider()
 
