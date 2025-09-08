@@ -45,9 +45,9 @@ def get_default_paths():
         # Try to get from Streamlit secrets first, then fall back to relative paths
         try:
             return {
-                'db_path': st.secrets.get("db_path", "data/matches.db"),
-                'image_base_path': st.secrets.get("image_base_path", "data/output_patches"),
-                'complete_image_path': st.secrets.get("complete_image_path", "data/output_bbox")
+                'db_path': st.secrets.get("db_path", "fragment-explorer/data/matches.db"),
+                'image_base_path': st.secrets.get("image_base_path", "fragment-explorer/data/output_patches"),
+                'complete_image_path': st.secrets.get("complete_image_path", "fragment-explorer/data/output_bbox")
             }
         except:
             script_dir = os.path.dirname(os.path.abspath(__file__))
