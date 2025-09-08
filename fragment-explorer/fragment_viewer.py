@@ -804,6 +804,17 @@ def main():
                             st.image(combined, caption="Match Visualization", use_container_width=True)
                 else:
                     st.warning("⚠️ Could not load one or both images. Please check the image paths.")
+                    # Debug information
+                    with st.expander("Debug Info"):
+                        st.write(f"Image 1 path attempted: {path1}")
+                        st.write(f"Image 1 exists: {os.path.exists(path1)}")
+                        st.write(f"Image 2 path attempted: {path2}")
+                        st.write(f"Image 2 exists: {os.path.exists(path2)}")
+                        st.write(f"Base image path: {viewer.image_base_path}")
+                        # List files in the base path
+                        if os.path.exists(viewer.image_base_path):
+                            files = os.listdir(viewer.image_base_path)
+                            st.write(f"Files/folders in base path (first 10): {files[:10]}")
 
                 # Button to see all matches for the selected fragments
                 st.divider()
