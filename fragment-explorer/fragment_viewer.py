@@ -446,9 +446,18 @@ def main():
             else:
                 st.success(f"✅ Database found")
 
+
         if st.button("🔌 Connect", type="primary"):
-    # Rest of your connection logic...
-    # Sidebar configuration
+            conn = get_database_connection(db_path)
+            st.session_state.viewer = FragmentMatchViewer(db_path, image_base_path)
+            st.session_state.viewer.conn = conn
+            st.session_state.complete_image_path = complete_image_path
+            st.session_state.connected = True
+            if conn:
+                st.success("✅ Connected successfully!")
+                st.session_state.connected = True
+            else:
+                st.session_state.connected = False
 
     # Check if viewer is initialized
     if 'viewer' not in st.session_state or not st.session_state.get('connected', False):
