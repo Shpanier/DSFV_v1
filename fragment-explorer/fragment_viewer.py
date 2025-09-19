@@ -1,13 +1,13 @@
 """
-Interactive Fragment Match Visualization App - Streamlined Version
+Interactive Fragment Match Visualization App - Streamlined Version with Rotation
 
 This Streamlit app provides comprehensive tools to explore fragment matches
-with emphasis on homography error analysis.
+with emphasis on homography error analysis and image rotation capabilities.
 
 Requirements:
 pip install streamlit opencv-python numpy pandas plotly sqlite3 pillow
 
-Run with: streamlit run fragment_viewer.py
+Run with: streamlit run fragment_viewer_with_rotation.py
 """
 
 import streamlit as st
@@ -375,10 +375,44 @@ class FragmentMatchViewer:
                 return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         return None
 
+    def rotate_image(self, image: np.ndarray, angle: float) -> np.ndarray:
+        """Rotate image by specified angle in degrees."""
+        if angle == 0:
+            return image
+
+        # Get image dimensions
+        height, width = image.shape[:2]
+        center = (width // 2, height // 2)
+
+        # Get rotation matrix
+        rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+        # Calculate new dimensions to prevent cropping
+        cos = np.abs(rotation_matrix[0, 0])
+        sin = np.abs(rotation_matrix[0, 1])
+        new_width = int((height * sin) + (width * cos))
+        new_height = int((height * cos) + (width * sin))
+
+        # Adjust rotation matrix for new dimensions
+        rotation_matrix[0, 2] += (new_width / 2) - center[0]
+        rotation_matrix[1, 2] += (new_height / 2) - center[1]
+
+        # Rotate the image with white background
+        rotated = cv2.warpAffine(image, rotation_matrix, (new_width, new_height),
+                                borderValue=(255, 255, 255))
+
+        return rotated
+
     def visualize_matches_with_lines(self, img1: np.ndarray, img2: np.ndarray,
-                                     matches_data: bytes) -> np.ndarray:
+                                     matches_data: bytes, angle1: float = 0, angle2: float = 0) -> np.ndarray:
         """Create visualization with match lines between images."""
         try:
+            # Rotate images if needed
+            if angle1 != 0:
+                img1 = self.rotate_image(img1, angle1)
+            if angle2 != 0:
+                img2 = self.rotate_image(img2, angle2)
+
             # Deserialize match data
             matches = pickle.loads(matches_data)
 
@@ -780,7 +814,7 @@ def main():
                     f"<div style='background-color: {quality_color}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px;'>Quality: {quality}</div>",
                     unsafe_allow_html=True)
 
-                # Load and display images
+                # Load and display images with rotation controls
                 path1 = viewer.construct_image_path(selected_match['file1'])
                 path2 = viewer.construct_image_path(selected_match['file2'])
 
@@ -791,17 +825,60 @@ def main():
                     col1, col2 = st.columns(2)
 
                     with col1:
-                        st.image(img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
+                        # Display Fragment 1
+                        rotation1 = st.slider(
+                            "🔄 Rotate Fragment 1",
+                            min_value=0,
+                            max_value=360,
+                            value=0,
+                            step=1,
+                            key=f"rotation1_{selected_idx}",
+                            help="Rotate the image by degrees (0-360)"
+                        )
+
+                        # Apply rotation if needed
+                        display_img1 = viewer.rotate_image(img1, rotation1) if rotation1 != 0 else img1
+
+                        st.image(display_img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
+
+                        # Reset button for rotation
+                        if rotation1 != 0:
+                            if st.button("↺ Reset", key=f"reset1_{selected_idx}"):
+                                st.session_state[f"rotation1_{selected_idx}"] = 0
+                                st.rerun()
 
                     with col2:
-                        st.image(img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
+                        # Display Fragment 2
+                        rotation2 = st.slider(
+                            "🔄 Rotate Fragment 2",
+                            min_value=0,
+                            max_value=360,
+                            value=0,
+                            step=1,
+                            key=f"rotation2_{selected_idx}",
+                            help="Rotate the image by degrees (0-360)"
+                        )
 
-                    # Show combined visualization
-                    if st.checkbox("Show match visualization with connection lines" , value=True):
+                        # Apply rotation if needed
+                        display_img2 = viewer.rotate_image(img2, rotation2) if rotation2 != 0 else img2
+
+                        st.image(display_img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
+
+                        # Reset button for rotation
+                        if rotation2 != 0:
+                            if st.button("↺ Reset", key=f"reset2_{selected_idx}"):
+                                st.session_state[f"rotation2_{selected_idx}"] = 0
+                                st.rerun()
+
+                    # Show combined visualization with rotations applied
+                    if st.checkbox("Show match visualization with connection lines", value=True):
                         match_data = viewer.get_match_details(selected_match['id'])
                         if match_data:
-                            combined = viewer.visualize_matches_with_lines(img1, img2, match_data)
-                            st.image(combined, caption="Match Visualization", use_container_width=True)
+                            # Get current rotation values
+                            rot1 = st.session_state.get(f"rotation1_{selected_idx}", 0)
+                            rot2 = st.session_state.get(f"rotation2_{selected_idx}", 0)
+                            combined = viewer.visualize_matches_with_lines(img1, img2, match_data, rot1, rot2)
+                            st.image(combined, caption="Match Visualization (with rotations applied)", use_container_width=True)
                 else:
                     st.warning("⚠️ Could not load one or both images. Please check the image paths.")
                     # Debug information
@@ -844,7 +921,7 @@ def main():
                         st.session_state.min_error_for_all = min_error
                         st.session_state.max_error_for_all = max_error
 
-                # Display complete images if button was clicked
+                # Display complete images if button was clicked (with rotation controls)
                 if st.session_state.get('show_complete_images', False):
                     st.divider()
                     st.subheader("📸 Complete Images Containing These Fragments")
@@ -874,7 +951,20 @@ def main():
 
                         with col1:
                             if complete_img1 is not None:
-                                st.image(complete_img1,
+                                # Add rotation control for complete image 1
+                                complete_rotation1 = st.slider(
+                                    "🔄 Rotate Complete Image 1",
+                                    min_value=0,
+                                    max_value=360,
+                                    value=0,
+                                    step=1,
+                                    key="complete_rotation1",
+                                    help="Rotate the complete image by degrees (0-360)"
+                                )
+
+                                display_complete1 = viewer.rotate_image(complete_img1, complete_rotation1) if complete_rotation1 != 0 else complete_img1
+
+                                st.image(display_complete1,
                                          caption=f"Complete Image: {base_file1}",
                                          use_container_width=True)
                                 # Show which fragment this is
@@ -886,7 +976,20 @@ def main():
 
                         with col2:
                             if complete_img2 is not None:
-                                st.image(complete_img2,
+                                # Add rotation control for complete image 2
+                                complete_rotation2 = st.slider(
+                                    "🔄 Rotate Complete Image 2",
+                                    min_value=0,
+                                    max_value=360,
+                                    value=0,
+                                    step=1,
+                                    key="complete_rotation2",
+                                    help="Rotate the complete image by degrees (0-360)"
+                                )
+
+                                display_complete2 = viewer.rotate_image(complete_img2, complete_rotation2) if complete_rotation2 != 0 else complete_img2
+
+                                st.image(display_complete2,
                                          caption=f"Complete Image: {base_file2}",
                                          use_container_width=True)
                                 # Show which fragment this is
@@ -903,7 +1006,7 @@ def main():
                     else:
                         st.warning("⚠️ Complete image path not configured. Please set it in the sidebar.")
 
-                # Display all matches if button was clicked
+                # Display all matches if button was clicked (with rotation for thumbnails)
                 if st.session_state.get('show_all_matches', False):
                     st.divider()
                     st.subheader("📋 Other Matches for Selected Fragments")
@@ -960,14 +1063,23 @@ def main():
                                     </div>
                                     """, unsafe_allow_html=True)
 
-                                    # Load and display thumbnail
+                                    # Load and display thumbnail with rotation
                                     matched_path = viewer.construct_image_path(row['matched_fragment'])
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with unique key
+                                        # Create expandable image with rotation control
                                         with st.expander(f"View image", expanded=False):
-                                            st.image(matched_img, caption=row['matched_fragment'],
+                                            thumb_rotation = st.slider(
+                                                f"🔄 Rotate",
+                                                min_value=0,
+                                                max_value=360,
+                                                value=0,
+                                                step=15,
+                                                key=f"thumb1_{idx}",
+                                            )
+                                            display_thumb = viewer.rotate_image(matched_img, thumb_rotation) if thumb_rotation != 0 else matched_img
+                                            st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
                                     st.markdown("---")
@@ -1013,14 +1125,23 @@ def main():
                                     </div>
                                     """, unsafe_allow_html=True)
 
-                                    # Load and display thumbnail
+                                    # Load and display thumbnail with rotation
                                     matched_path = viewer.construct_image_path(row['matched_fragment'])
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with unique key
+                                        # Create expandable image with rotation control
                                         with st.expander(f"View image", expanded=False):
-                                            st.image(matched_img, caption=row['matched_fragment'],
+                                            thumb_rotation = st.slider(
+                                                f"🔄 Rotate",
+                                                min_value=0,
+                                                max_value=360,
+                                                value=0,
+                                                step=15,
+                                                key=f"thumb2_{idx}",
+                                            )
+                                            display_thumb = viewer.rotate_image(matched_img, thumb_rotation) if thumb_rotation != 0 else matched_img
+                                            st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
                                     st.markdown("---")
