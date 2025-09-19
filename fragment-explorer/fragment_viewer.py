@@ -837,14 +837,16 @@ def main():
                         )
 
                         # Apply rotation if needed
-                        display_img1 = viewer.rotate_image(img1, rotation1) if rotation1 != 0 else img1
+                        if rotation1 != 0:
+                            display_img1 = viewer.rotate_image(img1, rotation1)
+                        else:
+                            display_img1 = img1
 
                         st.image(display_img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
 
                         # Reset button for rotation
                         if rotation1 != 0:
                             if st.button("↺ Reset", key=f"reset1_{selected_idx}"):
-                                st.session_state[f"rotation1_{selected_idx}"] = 0
                                 st.rerun()
 
                     with col2:
@@ -860,24 +862,24 @@ def main():
                         )
 
                         # Apply rotation if needed
-                        display_img2 = viewer.rotate_image(img2, rotation2) if rotation2 != 0 else img2
+                        if rotation2 != 0:
+                            display_img2 = viewer.rotate_image(img2, rotation2)
+                        else:
+                            display_img2 = img2
 
                         st.image(display_img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
 
                         # Reset button for rotation
                         if rotation2 != 0:
                             if st.button("↺ Reset", key=f"reset2_{selected_idx}"):
-                                st.session_state[f"rotation2_{selected_idx}"] = 0
                                 st.rerun()
 
                     # Show combined visualization with rotations applied
                     if st.checkbox("Show match visualization with connection lines", value=True):
                         match_data = viewer.get_match_details(selected_match['id'])
                         if match_data:
-                            # Get current rotation values
-                            rot1 = st.session_state.get(f"rotation1_{selected_idx}", 0)
-                            rot2 = st.session_state.get(f"rotation2_{selected_idx}", 0)
-                            combined = viewer.visualize_matches_with_lines(img1, img2, match_data, rot1, rot2)
+                            # Use current rotation values directly
+                            combined = viewer.visualize_matches_with_lines(img1, img2, match_data, rotation1, rotation2)
                             st.image(combined, caption="Match Visualization (with rotations applied)", use_container_width=True)
                 else:
                     st.warning("⚠️ Could not load one or both images. Please check the image paths.")
@@ -962,7 +964,10 @@ def main():
                                     help="Rotate the complete image by degrees (0-360)"
                                 )
 
-                                display_complete1 = viewer.rotate_image(complete_img1, complete_rotation1) if complete_rotation1 != 0 else complete_img1
+                                if complete_rotation1 != 0:
+                                    display_complete1 = viewer.rotate_image(complete_img1, complete_rotation1)
+                                else:
+                                    display_complete1 = complete_img1
 
                                 st.image(display_complete1,
                                          caption=f"Complete Image: {base_file1}",
@@ -987,7 +992,10 @@ def main():
                                     help="Rotate the complete image by degrees (0-360)"
                                 )
 
-                                display_complete2 = viewer.rotate_image(complete_img2, complete_rotation2) if complete_rotation2 != 0 else complete_img2
+                                if complete_rotation2 != 0:
+                                    display_complete2 = viewer.rotate_image(complete_img2, complete_rotation2)
+                                else:
+                                    display_complete2 = complete_img2
 
                                 st.image(display_complete2,
                                          caption=f"Complete Image: {base_file2}",
@@ -1078,7 +1086,10 @@ def main():
                                                 step=15,
                                                 key=f"thumb1_{idx}",
                                             )
-                                            display_thumb = viewer.rotate_image(matched_img, thumb_rotation) if thumb_rotation != 0 else matched_img
+                                            if thumb_rotation != 0:
+                                                display_thumb = viewer.rotate_image(matched_img, thumb_rotation)
+                                            else:
+                                                display_thumb = matched_img
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
@@ -1140,7 +1151,10 @@ def main():
                                                 step=15,
                                                 key=f"thumb2_{idx}",
                                             )
-                                            display_thumb = viewer.rotate_image(matched_img, thumb_rotation) if thumb_rotation != 0 else matched_img
+                                            if thumb_rotation != 0:
+                                                display_thumb = viewer.rotate_image(matched_img, thumb_rotation)
+                                            else:
+                                                display_thumb = matched_img
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
