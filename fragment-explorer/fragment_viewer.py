@@ -404,25 +404,137 @@ class FragmentMatchViewer:
         return rotated
 
     def zoom_image(self, image: np.ndarray, zoom_factor: float) -> np.ndarray:
-        """Zoom image by specified factor (1.0 = original size)."""
+        """Zoom into/out of image center (zoom_factor: <1 shows more, >1 shows less but magnified)."""
         if zoom_factor == 1.0:
             return image
 
         height, width = image.shape[:2]
 
-        # Calculate new dimensions
-        new_width = int(width * zoom_factor)
-        new_height = int(height * zoom_factor)
-
-        # Resize image
+        # Calculate the size of the region to extract
+        # zoom > 1 means zoom in (show less area but magnified)
+        # zoom < 1 means zoom out (show more area, may need padding)
         if zoom_factor > 1.0:
-            # Zoom in - use INTER_CUBIC for better quality
-            zoomed = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+            # Zoom in - extract a smaller region and resize it to original size
+            new_height = int(height / zoom_factor)
+            new_width = int(width / zoom_factor)
+
+            # Calculate center crop coordinates
+            y_center = height // 2
+            x_center = width // 2
+
+            y1 = max(0, y_center - new_height // 2)
+            y2 = min(height, y_center + new_height // 2)
+            x1 = max(0, x_center - new_width // 2)
+            x2 = min(width, x_center + new_width // 2)
+
+            # Extract the region
+            cropped = image[y1:y2, x1:x2]
+
+            # Resize back to original dimensions (magnifying the cropped area)
+            zoomed = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_CUBIC)
+
         else:
-            # Zoom out - use INTER_AREA for better quality when shrinking
-            zoomed = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            # Zoom out - shrink the image and pad with white borders
+            shrink_height = int(height * zoom_factor)
+            shrink_width = int(width * zoom_factor)
+
+            # Shrink the image
+            shrunk = cv2.resize(image, (shrink_width, shrink_height), interpolation=cv2.INTER_AREA)
+
+            # Create a white canvas of original size
+            zoomed = np.ones((height, width, 3), dtype=np.uint8) * 255
+
+            # Calculate position to center the shrunk image
+            y_offset = (height - shrink_height) // 2
+            x_offset = (width - shrink_width) // 2
+
+            # Place the shrunk image in the center
+            zoomed[y_offset:y_offset+shrink_height, x_offset:x_offset+shrink_width] = shrunk
 
         return zoomed
+
+    def zoom_image_with_center(self, image: np.ndarray, zoom_factor: float,
+                               center_x: float = 0.5, center_y: float = 0.5) -> np.ndarray:
+        """
+        Zoom into/out of image with specified center point.
+        zoom_factor: >1 for zoom in, <1 for zoom out
+        center_x, center_y: normalized coordinates (0-1) for zoom center
+        """
+        if zoom_factor == 1.0:
+            return image
+
+        height, width = image.shape[:2]
+
+        if zoom_factor > 1.0:
+            # Zoom in - extract a smaller region centered at (center_x, center_y)
+            new_height = int(height / zoom_factor)
+            new_width = int(width / zoom_factor)
+
+            # Convert normalized coordinates to pixel coordinates
+            y_center = int(height * center_y)
+            x_center = int(width * center_x)
+
+            # Calculate crop boundaries
+            y1 = max(0, y_center - new_height // 2)
+            y2 = min(height, y1 + new_height)
+            if y2 == height:
+                y1 = max(0, height - new_height)
+
+            x1 = max(0, x_center - new_width // 2)
+            x2 = min(width, x1 + new_width)
+            if x2 == width:
+                x1 = max(0, width - new_width)
+
+            # Extract and magnify the region
+            cropped = image[y1:y2, x1:x2]
+            zoomed = cv2.resize(cropped, (width, height), interpolation=cv2.INTER_CUBIC)
+
+        else:
+            # Zoom out - same as before
+            shrink_height = int(height * zoom_factor)
+            shrink_width = int(width * zoom_factor)
+
+            shrunk = cv2.resize(image, (shrink_width, shrink_height), interpolation=cv2.INTER_AREA)
+
+            zoomed = np.ones((height, width, 3), dtype=np.uint8) * 255
+
+            y_offset = (height - shrink_height) // 2
+            x_offset = (width - shrink_width) // 2
+
+            zoomed[y_offset:y_offset+shrink_height, x_offset:x_offset+shrink_width] = shrunk
+
+        return zoomed
+
+    def create_zoom_preview(self, image: np.ndarray, zoom_factor: float) -> np.ndarray:
+        """Create a small preview showing what part of the image is being zoomed."""
+        if zoom_factor <= 1.0:
+            return None
+
+        height, width = image.shape[:2]
+
+        # Create a small thumbnail of the full image
+        thumb_height = 100
+        thumb_width = int(width * (thumb_height / height))
+        thumbnail = cv2.resize(image, (thumb_width, thumb_height), interpolation=cv2.INTER_AREA)
+
+        # Calculate the visible region in the thumbnail
+        visible_height = int(thumb_height / zoom_factor)
+        visible_width = int(thumb_width / zoom_factor)
+
+        # Center coordinates
+        y_center = thumb_height // 2
+        x_center = thumb_width // 2
+
+        y1 = y_center - visible_height // 2
+        y2 = y_center + visible_height // 2
+        x1 = x_center - visible_width // 2
+        x2 = x_center + visible_width // 2
+
+        # Draw a red rectangle on the thumbnail
+        preview = thumbnail.copy()
+        cv2.rectangle(preview, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+        return preview
 
     def process_image(self, image: np.ndarray, rotation: float = 0, zoom: float = 1.0) -> np.ndarray:
         """Apply rotation and zoom to an image."""
@@ -884,11 +996,18 @@ def main():
                                 value=1.0,
                                 step=0.25,
                                 key=f"zoom1_{selected_idx}",
-                                help="Zoom level (0.25x to 4x)"
+                                help="Zoom: <1 zooms out (shows smaller), >1 zooms in (magnifies center)"
                             )
 
                         # Apply transformations
                         display_img1 = viewer.process_image(img1, rotation1, zoom1)
+
+                        # Show zoom preview if zoomed in
+                        if zoom1 > 1.0:
+                            preview1 = viewer.create_zoom_preview(img1, zoom1)
+                            if preview1 is not None:
+                                st.caption("🔍 Zoom preview (red box shows visible area):")
+                                st.image(preview1, width=150)
 
                         st.image(display_img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
 
@@ -923,11 +1042,18 @@ def main():
                                 value=1.0,
                                 step=0.25,
                                 key=f"zoom2_{selected_idx}",
-                                help="Zoom level (0.25x to 4x)"
+                                help="Zoom: <1 zooms out (shows smaller), >1 zooms in (magnifies center)"
                             )
 
                         # Apply transformations
                         display_img2 = viewer.process_image(img2, rotation2, zoom2)
+
+                        # Show zoom preview if zoomed in
+                        if zoom2 > 1.0:
+                            preview2 = viewer.create_zoom_preview(img2, zoom2)
+                            if preview2 is not None:
+                                st.caption("🔍 Zoom preview (red box shows visible area):")
+                                st.image(preview2, width=150)
 
                         st.image(display_img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
 
