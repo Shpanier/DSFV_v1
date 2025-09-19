@@ -1,13 +1,13 @@
 """
-Interactive Fragment Match Visualization App - Streamlined Version with Rotation
+Interactive Fragment Match Visualization App - With Rotation & Zoom
 
 This Streamlit app provides comprehensive tools to explore fragment matches
-with emphasis on homography error analysis and image rotation capabilities.
+with emphasis on homography error analysis, including image rotation and zoom capabilities.
 
 Requirements:
 pip install streamlit opencv-python numpy pandas plotly sqlite3 pillow
 
-Run with: streamlit run fragment_viewer_with_rotation.py
+Run with: streamlit run fragment_viewer_with_rotation_zoom.py
 """
 
 import streamlit as st
@@ -403,25 +403,59 @@ class FragmentMatchViewer:
 
         return rotated
 
+    def zoom_image(self, image: np.ndarray, zoom_factor: float) -> np.ndarray:
+        """Zoom image by specified factor (1.0 = original size)."""
+        if zoom_factor == 1.0:
+            return image
+
+        height, width = image.shape[:2]
+
+        # Calculate new dimensions
+        new_width = int(width * zoom_factor)
+        new_height = int(height * zoom_factor)
+
+        # Resize image
+        if zoom_factor > 1.0:
+            # Zoom in - use INTER_CUBIC for better quality
+            zoomed = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+        else:
+            # Zoom out - use INTER_AREA for better quality when shrinking
+            zoomed = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+        return zoomed
+
+    def process_image(self, image: np.ndarray, rotation: float = 0, zoom: float = 1.0) -> np.ndarray:
+        """Apply rotation and zoom to an image."""
+        processed = image.copy()
+
+        # Apply zoom first
+        if zoom != 1.0:
+            processed = self.zoom_image(processed, zoom)
+
+        # Then apply rotation
+        if rotation != 0:
+            processed = self.rotate_image(processed, rotation)
+
+        return processed
+
     def visualize_matches_with_lines(self, img1: np.ndarray, img2: np.ndarray,
-                                     matches_data: bytes, angle1: float = 0, angle2: float = 0) -> np.ndarray:
+                                     matches_data: bytes, angle1: float = 0, angle2: float = 0,
+                                     zoom1: float = 1.0, zoom2: float = 1.0) -> np.ndarray:
         """Create visualization with match lines between images."""
         try:
-            # Rotate images if needed
-            if angle1 != 0:
-                img1 = self.rotate_image(img1, angle1)
-            if angle2 != 0:
-                img2 = self.rotate_image(img2, angle2)
+            # Process images with rotation and zoom
+            processed_img1 = self.process_image(img1, angle1, zoom1)
+            processed_img2 = self.process_image(img2, angle2, zoom2)
 
             # Deserialize match data
             matches = pickle.loads(matches_data)
 
             if not matches:
-                return np.hstack([img1, img2])
+                return np.hstack([processed_img1, processed_img2])
 
             # Create side-by-side visualization
-            h1, w1 = img1.shape[:2]
-            h2, w2 = img2.shape[:2]
+            h1, w1 = processed_img1.shape[:2]
+            h2, w2 = processed_img2.shape[:2]
 
             # Create output image
             height = max(h1, h2)
@@ -429,8 +463,8 @@ class FragmentMatchViewer:
             output = np.zeros((height, width, 3), dtype=np.uint8)
 
             # Place images
-            output[:h1, :w1] = img1
-            output[:h2, w1:] = img2
+            output[:h1, :w1] = processed_img1
+            output[:h2, w1:] = processed_img2
 
             # Draw sample connection lines (in production, use actual keypoint data)
             num_lines_to_draw = min(50, len(matches))  # Limit lines for clarity
@@ -461,7 +495,7 @@ class FragmentMatchViewer:
 
         except Exception as e:
             st.error(f"Error visualizing matches: {e}")
-            return np.hstack([img1, img2])
+            return np.hstack([processed_img1, processed_img2])
 
 
 def main():
@@ -826,61 +860,93 @@ def main():
 
                     with col1:
                         # Display Fragment 1
-                        rotation1 = st.slider(
-                            "🔄 Rotate Fragment 1",
-                            min_value=0,
-                            max_value=360,
-                            value=0,
-                            step=1,
-                            key=f"rotation1_{selected_idx}",
-                            help="Rotate the image by degrees (0-360)"
-                        )
+                        st.markdown("**Fragment 1 Controls:**")
 
-                        # Apply rotation if needed
-                        if rotation1 != 0:
-                            display_img1 = viewer.rotate_image(img1, rotation1)
-                        else:
-                            display_img1 = img1
+                        # Create two columns for rotation and zoom
+                        ctrl_col1, ctrl_col2 = st.columns(2)
+
+                        with ctrl_col1:
+                            rotation1 = st.slider(
+                                "🔄 Rotate",
+                                min_value=0,
+                                max_value=360,
+                                value=0,
+                                step=1,
+                                key=f"rotation1_{selected_idx}",
+                                help="Rotate the image by degrees (0-360)"
+                            )
+
+                        with ctrl_col2:
+                            zoom1 = st.slider(
+                                "🔍 Zoom",
+                                min_value=0.25,
+                                max_value=4.0,
+                                value=1.0,
+                                step=0.25,
+                                key=f"zoom1_{selected_idx}",
+                                help="Zoom level (0.25x to 4x)"
+                            )
+
+                        # Apply transformations
+                        display_img1 = viewer.process_image(img1, rotation1, zoom1)
 
                         st.image(display_img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
 
-                        # Reset button for rotation
-                        if rotation1 != 0:
-                            if st.button("↺ Reset", key=f"reset1_{selected_idx}"):
+                        # Reset button for both controls
+                        if rotation1 != 0 or zoom1 != 1.0:
+                            if st.button("↺ Reset All", key=f"reset1_{selected_idx}"):
                                 st.rerun()
 
                     with col2:
                         # Display Fragment 2
-                        rotation2 = st.slider(
-                            "🔄 Rotate Fragment 2",
-                            min_value=0,
-                            max_value=360,
-                            value=0,
-                            step=1,
-                            key=f"rotation2_{selected_idx}",
-                            help="Rotate the image by degrees (0-360)"
-                        )
+                        st.markdown("**Fragment 2 Controls:**")
 
-                        # Apply rotation if needed
-                        if rotation2 != 0:
-                            display_img2 = viewer.rotate_image(img2, rotation2)
-                        else:
-                            display_img2 = img2
+                        # Create two columns for rotation and zoom
+                        ctrl_col1, ctrl_col2 = st.columns(2)
+
+                        with ctrl_col1:
+                            rotation2 = st.slider(
+                                "🔄 Rotate",
+                                min_value=0,
+                                max_value=360,
+                                value=0,
+                                step=1,
+                                key=f"rotation2_{selected_idx}",
+                                help="Rotate the image by degrees (0-360)"
+                            )
+
+                        with ctrl_col2:
+                            zoom2 = st.slider(
+                                "🔍 Zoom",
+                                min_value=0.25,
+                                max_value=4.0,
+                                value=1.0,
+                                step=0.25,
+                                key=f"zoom2_{selected_idx}",
+                                help="Zoom level (0.25x to 4x)"
+                            )
+
+                        # Apply transformations
+                        display_img2 = viewer.process_image(img2, rotation2, zoom2)
 
                         st.image(display_img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
 
-                        # Reset button for rotation
-                        if rotation2 != 0:
-                            if st.button("↺ Reset", key=f"reset2_{selected_idx}"):
+                        # Reset button for both controls
+                        if rotation2 != 0 or zoom2 != 1.0:
+                            if st.button("↺ Reset All", key=f"reset2_{selected_idx}"):
                                 st.rerun()
 
-                    # Show combined visualization with rotations applied
+                    # Show combined visualization with rotations and zoom applied
                     if st.checkbox("Show match visualization with connection lines", value=True):
                         match_data = viewer.get_match_details(selected_match['id'])
                         if match_data:
-                            # Use current rotation values directly
-                            combined = viewer.visualize_matches_with_lines(img1, img2, match_data, rotation1, rotation2)
-                            st.image(combined, caption="Match Visualization (with rotations applied)", use_container_width=True)
+                            # Use current rotation and zoom values directly
+                            combined = viewer.visualize_matches_with_lines(
+                                img1, img2, match_data,
+                                rotation1, rotation2,
+                                zoom1, zoom2
+                            )
+                            st.image(combined, caption="Match Visualization (with transformations applied)", use_container_width=True)
                 else:
                     st.warning("⚠️ Could not load one or both images. Please check the image paths.")
                     # Debug information
@@ -953,21 +1019,35 @@ def main():
 
                         with col1:
                             if complete_img1 is not None:
-                                # Add rotation control for complete image 1
-                                complete_rotation1 = st.slider(
-                                    "🔄 Rotate Complete Image 1",
-                                    min_value=0,
-                                    max_value=360,
-                                    value=0,
-                                    step=1,
-                                    key="complete_rotation1",
-                                    help="Rotate the complete image by degrees (0-360)"
-                                )
+                                st.markdown("**Complete Image 1 Controls:**")
 
-                                if complete_rotation1 != 0:
-                                    display_complete1 = viewer.rotate_image(complete_img1, complete_rotation1)
-                                else:
-                                    display_complete1 = complete_img1
+                                # Create two columns for rotation and zoom
+                                ctrl_col1, ctrl_col2 = st.columns(2)
+
+                                with ctrl_col1:
+                                    complete_rotation1 = st.slider(
+                                        "🔄 Rotate",
+                                        min_value=0,
+                                        max_value=360,
+                                        value=0,
+                                        step=1,
+                                        key="complete_rotation1",
+                                        help="Rotate the complete image by degrees (0-360)"
+                                    )
+
+                                with ctrl_col2:
+                                    complete_zoom1 = st.slider(
+                                        "🔍 Zoom",
+                                        min_value=0.25,
+                                        max_value=4.0,
+                                        value=1.0,
+                                        step=0.25,
+                                        key="complete_zoom1",
+                                        help="Zoom level (0.25x to 4x)"
+                                    )
+
+                                # Apply transformations
+                                display_complete1 = viewer.process_image(complete_img1, complete_rotation1, complete_zoom1)
 
                                 st.image(display_complete1,
                                          caption=f"Complete Image: {base_file1}",
@@ -981,21 +1061,35 @@ def main():
 
                         with col2:
                             if complete_img2 is not None:
-                                # Add rotation control for complete image 2
-                                complete_rotation2 = st.slider(
-                                    "🔄 Rotate Complete Image 2",
-                                    min_value=0,
-                                    max_value=360,
-                                    value=0,
-                                    step=1,
-                                    key="complete_rotation2",
-                                    help="Rotate the complete image by degrees (0-360)"
-                                )
+                                st.markdown("**Complete Image 2 Controls:**")
 
-                                if complete_rotation2 != 0:
-                                    display_complete2 = viewer.rotate_image(complete_img2, complete_rotation2)
-                                else:
-                                    display_complete2 = complete_img2
+                                # Create two columns for rotation and zoom
+                                ctrl_col1, ctrl_col2 = st.columns(2)
+
+                                with ctrl_col1:
+                                    complete_rotation2 = st.slider(
+                                        "🔄 Rotate",
+                                        min_value=0,
+                                        max_value=360,
+                                        value=0,
+                                        step=1,
+                                        key="complete_rotation2",
+                                        help="Rotate the complete image by degrees (0-360)"
+                                    )
+
+                                with ctrl_col2:
+                                    complete_zoom2 = st.slider(
+                                        "🔍 Zoom",
+                                        min_value=0.25,
+                                        max_value=4.0,
+                                        value=1.0,
+                                        step=0.25,
+                                        key="complete_zoom2",
+                                        help="Zoom level (0.25x to 4x)"
+                                    )
+
+                                # Apply transformations
+                                display_complete2 = viewer.process_image(complete_img2, complete_rotation2, complete_zoom2)
 
                                 st.image(display_complete2,
                                          caption=f"Complete Image: {base_file2}",
@@ -1076,20 +1170,33 @@ def main():
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with rotation control
+                                        # Create expandable image with rotation and zoom controls
                                         with st.expander(f"View image", expanded=False):
-                                            thumb_rotation = st.slider(
-                                                f"🔄 Rotate",
-                                                min_value=0,
-                                                max_value=360,
-                                                value=0,
-                                                step=15,
-                                                key=f"thumb1_{idx}",
-                                            )
-                                            if thumb_rotation != 0:
-                                                display_thumb = viewer.rotate_image(matched_img, thumb_rotation)
-                                            else:
-                                                display_thumb = matched_img
+                                            # Create two columns for controls
+                                            ctrl_col1, ctrl_col2 = st.columns(2)
+
+                                            with ctrl_col1:
+                                                thumb_rotation = st.slider(
+                                                    f"🔄 Rotate",
+                                                    min_value=0,
+                                                    max_value=360,
+                                                    value=0,
+                                                    step=15,
+                                                    key=f"thumb1_rot_{idx}",
+                                                )
+
+                                            with ctrl_col2:
+                                                thumb_zoom = st.slider(
+                                                    f"🔍 Zoom",
+                                                    min_value=0.5,
+                                                    max_value=3.0,
+                                                    value=1.0,
+                                                    step=0.25,
+                                                    key=f"thumb1_zoom_{idx}",
+                                                )
+
+                                            # Apply transformations
+                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom)
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
@@ -1141,20 +1248,33 @@ def main():
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with rotation control
+                                        # Create expandable image with rotation and zoom controls
                                         with st.expander(f"View image", expanded=False):
-                                            thumb_rotation = st.slider(
-                                                f"🔄 Rotate",
-                                                min_value=0,
-                                                max_value=360,
-                                                value=0,
-                                                step=15,
-                                                key=f"thumb2_{idx}",
-                                            )
-                                            if thumb_rotation != 0:
-                                                display_thumb = viewer.rotate_image(matched_img, thumb_rotation)
-                                            else:
-                                                display_thumb = matched_img
+                                            # Create two columns for controls
+                                            ctrl_col1, ctrl_col2 = st.columns(2)
+
+                                            with ctrl_col1:
+                                                thumb_rotation = st.slider(
+                                                    f"🔄 Rotate",
+                                                    min_value=0,
+                                                    max_value=360,
+                                                    value=0,
+                                                    step=15,
+                                                    key=f"thumb2_rot_{idx}",
+                                                )
+
+                                            with ctrl_col2:
+                                                thumb_zoom = st.slider(
+                                                    f"🔍 Zoom",
+                                                    min_value=0.5,
+                                                    max_value=3.0,
+                                                    value=1.0,
+                                                    step=0.25,
+                                                    key=f"thumb2_zoom_{idx}",
+                                                )
+
+                                            # Apply transformations
+                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom)
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
