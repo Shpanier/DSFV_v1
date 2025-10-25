@@ -1,13 +1,13 @@
 """
-Interactive Fragment Match Visualization App - With Rotation & Zoom
+Interactive Fragment Match Visualization App - With Rotation, Zoom & Translation
 
 This Streamlit app provides comprehensive tools to explore fragment matches
-with emphasis on homography error analysis, including image rotation and zoom capabilities.
+with emphasis on homography error analysis, including image rotation, zoom, and translation capabilities.
 
 Requirements:
 pip install streamlit opencv-python numpy pandas plotly sqlite3 pillow
 
-Run with: streamlit run fragment_viewer_with_rotation_zoom.py
+Run with: streamlit run fragment_viewer.py
 """
 
 import streamlit as st
@@ -453,6 +453,26 @@ class FragmentMatchViewer:
 
         return zoomed
 
+    def translate_image(self, image: np.ndarray, translate_x: float = 0, translate_y: float = 0) -> np.ndarray:
+        """
+        Translate (shift) image in x and y directions.
+        translate_x: horizontal shift in pixels (positive = right, negative = left)
+        translate_y: vertical shift in pixels (positive = down, negative = up)
+        """
+        if translate_x == 0 and translate_y == 0:
+            return image
+
+        height, width = image.shape[:2]
+
+        # Create translation matrix
+        translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
+
+        # Apply translation with white background
+        translated = cv2.warpAffine(image, translation_matrix, (width, height),
+                                   borderValue=(255, 255, 255))
+
+        return translated
+
     def zoom_image_with_center(self, image: np.ndarray, zoom_factor: float,
                                center_x: float = 0.5, center_y: float = 0.5) -> np.ndarray:
         """
@@ -536,8 +556,9 @@ class FragmentMatchViewer:
 
         return preview
 
-    def process_image(self, image: np.ndarray, rotation: float = 0, zoom: float = 1.0) -> np.ndarray:
-        """Apply rotation and zoom to an image."""
+    def process_image(self, image: np.ndarray, rotation: float = 0, zoom: float = 1.0,
+                     translate_x: float = 0, translate_y: float = 0) -> np.ndarray:
+        """Apply rotation, zoom, and translation to an image."""
         processed = image.copy()
 
         # Apply zoom first
@@ -548,16 +569,22 @@ class FragmentMatchViewer:
         if rotation != 0:
             processed = self.rotate_image(processed, rotation)
 
+        # Finally apply translation
+        if translate_x != 0 or translate_y != 0:
+            processed = self.translate_image(processed, translate_x, translate_y)
+
         return processed
 
     def visualize_matches_with_lines(self, img1: np.ndarray, img2: np.ndarray,
                                      matches_data: bytes, angle1: float = 0, angle2: float = 0,
-                                     zoom1: float = 1.0, zoom2: float = 1.0) -> np.ndarray:
+                                     zoom1: float = 1.0, zoom2: float = 1.0,
+                                     translate_x1: float = 0, translate_y1: float = 0,
+                                     translate_x2: float = 0, translate_y2: float = 0) -> np.ndarray:
         """Create visualization with match lines between images."""
         try:
-            # Process images with rotation and zoom
-            processed_img1 = self.process_image(img1, angle1, zoom1)
-            processed_img2 = self.process_image(img2, angle2, zoom2)
+            # Process images with rotation, zoom, and translation
+            processed_img1 = self.process_image(img1, angle1, zoom1, translate_x1, translate_y1)
+            processed_img2 = self.process_image(img2, angle2, zoom2, translate_x2, translate_y2)
 
             # Deserialize match data
             matches = pickle.loads(matches_data)
@@ -999,8 +1026,33 @@ def main():
                                 help="Zoom: <1 zooms out (shows smaller), >1 zooms in (magnifies center)"
                             )
 
+                        # Create two columns for translation
+                        trans_col1, trans_col2 = st.columns(2)
+
+                        with trans_col1:
+                            translate_x1 = st.slider(
+                                "⬅️➡️ Translate X",
+                                min_value=-500,
+                                max_value=500,
+                                value=0,
+                                step=10,
+                                key=f"translate_x1_{selected_idx}",
+                                help="Shift horizontally (negative = left, positive = right)"
+                            )
+
+                        with trans_col2:
+                            translate_y1 = st.slider(
+                                "⬆️⬇️ Translate Y",
+                                min_value=-500,
+                                max_value=500,
+                                value=0,
+                                step=10,
+                                key=f"translate_y1_{selected_idx}",
+                                help="Shift vertically (negative = up, positive = down)"
+                            )
+
                         # Apply transformations
-                        display_img1 = viewer.process_image(img1, rotation1, zoom1)
+                        display_img1 = viewer.process_image(img1, rotation1, zoom1, translate_x1, translate_y1)
 
                         # Show zoom preview if zoomed in
                         if zoom1 > 1.0:
@@ -1011,8 +1063,8 @@ def main():
 
                         st.image(display_img1, caption=f"Fragment 1: {selected_match['file1']}", use_container_width=True)
 
-                        # Reset button for both controls
-                        if rotation1 != 0 or zoom1 != 1.0:
+                        # Reset button for all controls
+                        if rotation1 != 0 or zoom1 != 1.0 or translate_x1 != 0 or translate_y1 != 0:
                             if st.button("↺ Reset All", key=f"reset1_{selected_idx}"):
                                 st.rerun()
 
@@ -1045,8 +1097,33 @@ def main():
                                 help="Zoom: <1 zooms out (shows smaller), >1 zooms in (magnifies center)"
                             )
 
+                        # Create two columns for translation
+                        trans_col1, trans_col2 = st.columns(2)
+
+                        with trans_col1:
+                            translate_x2 = st.slider(
+                                "⬅️➡️ Translate X",
+                                min_value=-500,
+                                max_value=500,
+                                value=0,
+                                step=10,
+                                key=f"translate_x2_{selected_idx}",
+                                help="Shift horizontally (negative = left, positive = right)"
+                            )
+
+                        with trans_col2:
+                            translate_y2 = st.slider(
+                                "⬆️⬇️ Translate Y",
+                                min_value=-500,
+                                max_value=500,
+                                value=0,
+                                step=10,
+                                key=f"translate_y2_{selected_idx}",
+                                help="Shift vertically (negative = up, positive = down)"
+                            )
+
                         # Apply transformations
-                        display_img2 = viewer.process_image(img2, rotation2, zoom2)
+                        display_img2 = viewer.process_image(img2, rotation2, zoom2, translate_x2, translate_y2)
 
                         # Show zoom preview if zoomed in
                         if zoom2 > 1.0:
@@ -1057,20 +1134,22 @@ def main():
 
                         st.image(display_img2, caption=f"Fragment 2: {selected_match['file2']}", use_container_width=True)
 
-                        # Reset button for both controls
-                        if rotation2 != 0 or zoom2 != 1.0:
+                        # Reset button for all controls
+                        if rotation2 != 0 or zoom2 != 1.0 or translate_x2 != 0 or translate_y2 != 0:
                             if st.button("↺ Reset All", key=f"reset2_{selected_idx}"):
                                 st.rerun()
 
-                    # Show combined visualization with rotations and zoom applied
+                    # Show combined visualization with rotations, zoom, and translation applied
                     if st.checkbox("Show match visualization with connection lines", value=True):
                         match_data = viewer.get_match_details(selected_match['id'])
                         if match_data:
-                            # Use current rotation and zoom values directly
+                            # Use current rotation, zoom, and translation values directly
                             combined = viewer.visualize_matches_with_lines(
                                 img1, img2, match_data,
                                 rotation1, rotation2,
-                                zoom1, zoom2
+                                zoom1, zoom2,
+                                translate_x1, translate_y1,
+                                translate_x2, translate_y2
                             )
                             st.image(combined, caption="Match Visualization (with transformations applied)", use_container_width=True)
                 else:
@@ -1172,8 +1251,34 @@ def main():
                                         help="Zoom level (0.25x to 4x)"
                                     )
 
+                                # Create two columns for translation
+                                trans_col1, trans_col2 = st.columns(2)
+
+                                with trans_col1:
+                                    complete_translate_x1 = st.slider(
+                                        "⬅️➡️ Translate X",
+                                        min_value=-500,
+                                        max_value=500,
+                                        value=0,
+                                        step=10,
+                                        key="complete_translate_x1",
+                                        help="Shift horizontally (negative = left, positive = right)"
+                                    )
+
+                                with trans_col2:
+                                    complete_translate_y1 = st.slider(
+                                        "⬆️⬇️ Translate Y",
+                                        min_value=-500,
+                                        max_value=500,
+                                        value=0,
+                                        step=10,
+                                        key="complete_translate_y1",
+                                        help="Shift vertically (negative = up, positive = down)"
+                                    )
+
                                 # Apply transformations
-                                display_complete1 = viewer.process_image(complete_img1, complete_rotation1, complete_zoom1)
+                                display_complete1 = viewer.process_image(complete_img1, complete_rotation1, complete_zoom1,
+                                                                        complete_translate_x1, complete_translate_y1)
 
                                 st.image(display_complete1,
                                          caption=f"Complete Image: {base_file1}",
@@ -1214,8 +1319,34 @@ def main():
                                         help="Zoom level (0.25x to 4x)"
                                     )
 
+                                # Create two columns for translation
+                                trans_col1, trans_col2 = st.columns(2)
+
+                                with trans_col1:
+                                    complete_translate_x2 = st.slider(
+                                        "⬅️➡️ Translate X",
+                                        min_value=-500,
+                                        max_value=500,
+                                        value=0,
+                                        step=10,
+                                        key="complete_translate_x2",
+                                        help="Shift horizontally (negative = left, positive = right)"
+                                    )
+
+                                with trans_col2:
+                                    complete_translate_y2 = st.slider(
+                                        "⬆️⬇️ Translate Y",
+                                        min_value=-500,
+                                        max_value=500,
+                                        value=0,
+                                        step=10,
+                                        key="complete_translate_y2",
+                                        help="Shift vertically (negative = up, positive = down)"
+                                    )
+
                                 # Apply transformations
-                                display_complete2 = viewer.process_image(complete_img2, complete_rotation2, complete_zoom2)
+                                display_complete2 = viewer.process_image(complete_img2, complete_rotation2, complete_zoom2,
+                                                                        complete_translate_x2, complete_translate_y2)
 
                                 st.image(display_complete2,
                                          caption=f"Complete Image: {base_file2}",
@@ -1296,9 +1427,9 @@ def main():
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with rotation and zoom controls
+                                        # Create expandable image with rotation, zoom, and translation controls
                                         with st.expander(f"View image", expanded=False):
-                                            # Create two columns for controls
+                                            # Create two columns for rotation and zoom controls
                                             ctrl_col1, ctrl_col2 = st.columns(2)
 
                                             with ctrl_col1:
@@ -1321,8 +1452,32 @@ def main():
                                                     key=f"thumb1_zoom_{idx}",
                                                 )
 
+                                            # Create two columns for translation controls
+                                            trans_col1, trans_col2 = st.columns(2)
+
+                                            with trans_col1:
+                                                thumb_translate_x = st.slider(
+                                                    f"⬅️➡️ Translate X",
+                                                    min_value=-300,
+                                                    max_value=300,
+                                                    value=0,
+                                                    step=10,
+                                                    key=f"thumb1_trans_x_{idx}",
+                                                )
+
+                                            with trans_col2:
+                                                thumb_translate_y = st.slider(
+                                                    f"⬆️⬇️ Translate Y",
+                                                    min_value=-300,
+                                                    max_value=300,
+                                                    value=0,
+                                                    step=10,
+                                                    key=f"thumb1_trans_y_{idx}",
+                                                )
+
                                             # Apply transformations
-                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom)
+                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom,
+                                                                                thumb_translate_x, thumb_translate_y)
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
@@ -1374,9 +1529,9 @@ def main():
                                     matched_img = viewer.load_image(matched_path)
 
                                     if matched_img is not None:
-                                        # Create expandable image with rotation and zoom controls
+                                        # Create expandable image with rotation, zoom, and translation controls
                                         with st.expander(f"View image", expanded=False):
-                                            # Create two columns for controls
+                                            # Create two columns for rotation and zoom controls
                                             ctrl_col1, ctrl_col2 = st.columns(2)
 
                                             with ctrl_col1:
@@ -1399,8 +1554,32 @@ def main():
                                                     key=f"thumb2_zoom_{idx}",
                                                 )
 
+                                            # Create two columns for translation controls
+                                            trans_col1, trans_col2 = st.columns(2)
+
+                                            with trans_col1:
+                                                thumb_translate_x = st.slider(
+                                                    f"⬅️➡️ Translate X",
+                                                    min_value=-300,
+                                                    max_value=300,
+                                                    value=0,
+                                                    step=10,
+                                                    key=f"thumb2_trans_x_{idx}",
+                                                )
+
+                                            with trans_col2:
+                                                thumb_translate_y = st.slider(
+                                                    f"⬆️⬇️ Translate Y",
+                                                    min_value=-300,
+                                                    max_value=300,
+                                                    value=0,
+                                                    step=10,
+                                                    key=f"thumb2_trans_y_{idx}",
+                                                )
+
                                             # Apply transformations
-                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom)
+                                            display_thumb = viewer.process_image(matched_img, thumb_rotation, thumb_zoom,
+                                                                                thumb_translate_x, thumb_translate_y)
                                             st.image(display_thumb, caption=row['matched_fragment'],
                                                      use_container_width=True)
 
