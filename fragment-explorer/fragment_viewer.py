@@ -908,7 +908,7 @@ def main():
                 else:
                     return ['background-color: #ffcccc'] * len(row)
 
-            display_df = matches_df[['file1', 'file2', 'match_count', 'mean_homo_err',
+            display_df = matches_df[['file1', 'match_count', 'mean_homo_err',
                                      'std_homo_err', 'num_inliers', 'quality', 'is_validated']]
 
             styled_df = display_df.style.apply(highlight_quality, axis=1)
@@ -1619,7 +1619,7 @@ def main():
                         'quality': 'Quality Category',
                         'num_inliers': 'Number of Inliers'
                     },
-                    hover_data=['file1', 'file2', 'std_homo_err'],
+                    hover_data=['file1', 'std_homo_err'],
                     color_discrete_map={
                         'Excellent': '#10b981',
                         'Good': '#fbbf24',
