@@ -199,14 +199,13 @@ class FragmentMatchViewer:
         try:
             # Build query with proper syntax
             query = """
-            SELECT 
+            SELECT
                 m.id,
                 m.file1,
                 m.file2,
                 m.match_count,
                 m.is_validated,
                 h.mean_homo_err,
-                h.std_homo_err,
                 h.max_homo_err,
                 h.min_homo_err,
                 h.median_homo_err,
@@ -238,8 +237,6 @@ class FragmentMatchViewer:
                 query += " ORDER BY m.match_count DESC"
             elif sort_by == 'match_count_asc':
                 query += " ORDER BY m.match_count ASC"
-            elif sort_by == 'std_error_asc':
-                query += " ORDER BY CASE WHEN h.std_homo_err IS NULL THEN 999999 ELSE h.std_homo_err END ASC"
             elif sort_by == 'validated_first':
                 query += " ORDER BY m.is_validated DESC, CASE WHEN h.mean_homo_err IS NULL THEN 999999 ELSE h.mean_homo_err END ASC"
 
@@ -295,16 +292,15 @@ class FragmentMatchViewer:
 
         try:
             query = """
-            SELECT 
+            SELECT
                 m.id,
                 m.file1,
                 m.file2,
                 m.match_count,
                 m.is_validated,
                 h.mean_homo_err,
-                h.std_homo_err,
                 h.is_valid as homo_valid,
-                CASE 
+                CASE
                     WHEN m.file1 = ? THEN m.file2
                     ELSE m.file1
                 END as matched_fragment
@@ -817,7 +813,6 @@ def main():
                 options=[
                     ('homo_error_asc', '📈 Homography Error (Best First)'),
                     ('homo_error_desc', '📉 Homography Error (Worst First)'),
-                    ('std_error_asc', '📊 Std Deviation (Most Stable)'),
                     ('match_count_desc', '🔢 Match Count (High to Low)'),
                     ('match_count_asc', '🔢 Match Count (Low to High)'),
                     ('validated_first', '✅ Validated First')
@@ -909,7 +904,7 @@ def main():
                     return ['background-color: #ffcccc'] * len(row)
 
             display_df = matches_df[['file1', 'file2', 'match_count', 'mean_homo_err',
-                                     'std_homo_err', 'num_inliers', 'quality', 'is_validated']]
+                                     'num_inliers', 'quality', 'is_validated']]
 
             styled_df = display_df.style.apply(highlight_quality, axis=1)
             st.dataframe(
@@ -936,7 +931,7 @@ def main():
                 # Display detailed match metrics
                 st.markdown("### 📐 Homography Metrics")
 
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3 = st.columns(3)
 
                 with col1:
                     if pd.notna(selected_match['mean_homo_err']):
@@ -949,15 +944,6 @@ def main():
                         st.metric("Mean Error", "N/A")
 
                 with col2:
-                    if pd.notna(selected_match['std_homo_err']):
-                        st.metric(
-                            "Std Deviation",
-                            f"{selected_match['std_homo_err']:.2f} px"
-                        )
-                    else:
-                        st.metric("Std Deviation", "N/A")
-
-                with col3:
                     if pd.notna(selected_match['min_homo_err']) and pd.notna(selected_match['max_homo_err']):
                         st.metric(
                             "Error Range",
@@ -966,7 +952,7 @@ def main():
                     else:
                         st.metric("Error Range", "N/A")
 
-                with col4:
+                with col3:
                     st.metric(
                         "Match Count",
                         f"{selected_match['match_count']}",
@@ -1619,7 +1605,7 @@ def main():
                         'quality': 'Quality Category',
                         'num_inliers': 'Number of Inliers'
                     },
-                    hover_data=['file1', 'file2', 'std_homo_err'],
+                    hover_data=['file1', 'file2'],
                     color_discrete_map={
                         'Excellent': '#10b981',
                         'Good': '#fbbf24',
@@ -1651,7 +1637,7 @@ def main():
 
                 with col2:
                     # Correlation heatmap
-                    corr_cols = ['match_count', 'mean_homo_err', 'std_homo_err', 'num_inliers']
+                    corr_cols = ['match_count', 'mean_homo_err', 'num_inliers']
                     corr_data = valid_errors[corr_cols].dropna()
                     if not corr_data.empty:
                         correlation = corr_data.corr()
